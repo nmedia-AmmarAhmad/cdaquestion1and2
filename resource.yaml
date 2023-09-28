@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create DynamoDB Table, VPC, Subnets, EC2 Instances, and related resources
+
+Resources:
+  MetroDDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: metroddb
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: N
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.50.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MyVPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: VPC
+      InternetGatewayId:
+        Ref: InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId:
+        Ref: InternetGateway
+
+  Subnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ca-central-1a
+      CidrBlock: 10.50.1.0/24
+      MapPublicIpOnLaunch: true
+
+  Subnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ca-central-1a
+      CidrBlock: 10.50.2.0/24
+
+  Subnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ca-central-1b
+      CidrBlock: 10.50.3.0/24
+      MapPublicIpOnLaunch: true
+
+  Subnet4:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: VPC
+      AvailabilityZone: ca-central-1b
+      CidrBlock: 10.50.4.0/24
+
+  EIP:
+    Type: AWS::EC2::EIP
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId:
+        Fn::GetAtt:
+          - EIP
+          - AllocationId
+      SubnetId:
+        Ref: Subnet1
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: VPC
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId:
+        Ref: PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId:
+        Ref: NATGateway
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for EC2 instances
+      VpcId:
+        Ref: VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: '22'
+          ToPort: '22'
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: '80'
+          ToPort: '80'
+          CidrIp: 0.0.0.0/0
+
+  PublicEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0d301416ec25dc953
+      InstanceType: t2.micro
+      Tags:
+        - Key: Name
+          Value: Public Server
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "true"
+          DeviceIndex: "0"
+          GroupSet:
+            - Ref: SecurityGroup
+          SubnetId:
+            Ref: Subnet1
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash -xe
+            yum -y update
+            sudo yum install -y httpd
+            sudo systemctl start httpd
+            sudo echo '<h1>Hello from ${AWS::Region}</h1>' > /var/www/html/index.html
+
+  # PrivateEC2Instance:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #     ImageId: ami-0d301416ec25dc953
+  #     InstanceType: t2.micro
+  #     Tags:
+  #       - Key: Name
+  #         Value: Private Server
+  #     NetworkInterfaces:
+  #       - AssociatePublicIpAddress: "false"
+  #         GroupSet:
+  #           - Ref: SecurityGroup
+  #         SubnetId:
+  #           Ref: Subnet3
+
+  
+  
+  # PublicEC2Instance:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #     SubnetId:
+  #       Ref: Subnet1
+  #     SecurityGroupIds:
+  #       - Ref: SecurityGroup
+  #     KeyName: ammar-kp  # Replace with your key pair name
+  #     ImageId: ami-0d301416ec25dc953  # Replace with your desired AMI ID
+
+  # PrivateEC2Instance:
+  #   Type: AWS::EC2::Instance
+  #   Properties:
+  #     SubnetId:
+  #       Ref: Subnet3
+  #     SecurityGroupIds:
+  #       - Ref: SecurityGroup
+
